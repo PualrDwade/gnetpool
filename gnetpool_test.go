@@ -9,6 +9,7 @@ import (
 
 func TestPoolGet(t *testing.T) {
 	pool := NewPool()
+	defer pool.Close()
 	opt := GetOption{
 		Host:     "localhost",
 		Port:     "3306",
@@ -28,6 +29,8 @@ func TestPoolGet(t *testing.T) {
 	_ = conn.Close()
 
 	assert.Equal(t, addr, addr2)
+	assert.Equal(t, pool.pools[opt.connKey()].active.Load(), int32(0))
+	assert.Equal(t, pool.pools[opt.connKey()].idle.Load(), int32(1))
 }
 
 func BenchmarkPoolGet(b *testing.B) {
@@ -43,4 +46,55 @@ func BenchmarkPoolGet(b *testing.B) {
 		assert.Nil(b, err)
 		_ = conn.Close()
 	}
+}
+
+func TestPoolGetForMaxActive(t *testing.T) {
+	pool := NewPool(WithMaxActive(1), WithIdleWaitTimeout(time.Millisecond*100))
+	defer pool.Close()
+	opt := GetOption{
+		Host:     "localhost",
+		Port:     "3306",
+		Protocol: "tcp",
+		Timeout:  time.Second,
+	}
+	conn, err := pool.Get(opt)
+	assert.Nil(t, err)
+	go func() {
+		time.Sleep(idleWaitTimeout * 2)
+		_ = conn.Close()
+	}()
+	conn, err = pool.Get(opt)
+	assert.Equal(t, err, err)
+	assert.Equal(t, pool.pools[opt.connKey()].active.Load(), int32(1))
+	assert.Equal(t, pool.pools[opt.connKey()].idle.Load(), int32(0))
+}
+
+func TestPoolGetForMaxIdle(t *testing.T) {
+	pool := NewPool(WithMaxIdle(1))
+	defer pool.Close()
+	opt := GetOption{
+		Host:     "localhost",
+		Port:     "3306",
+		Protocol: "tcp",
+		Timeout:  time.Second,
+	}
+	conn1, err1 := pool.Get(opt)
+	assert.Nil(t, err1)
+
+	conn2, err2 := pool.Get(opt)
+	assert.Nil(t, err2)
+
+	_ = conn1.Close()
+	_ = conn2.Close()
+
+	assert.Equal(t, pool.pools[opt.connKey()].active.Load(), int32(0))
+	assert.Equal(t, pool.pools[opt.connKey()].idle.Load(), int32(1))
+
+	// one conn is release, then get 2 conn is diff
+	newConn1, newErr1 := pool.Get(opt)
+	assert.Nil(t, newErr1, newErr1)
+	newConn2, newErr2 := pool.Get(opt)
+	assert.Nil(t, newErr2, newErr2)
+
+	assert.NotEqual(t, newConn1.LocalAddr().String(), newConn2.LocalAddr().String())
 }
