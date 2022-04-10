@@ -17,21 +17,19 @@ const (
 	idleTimeout   = time.Second * 60
 	checkDuration = time.Second * 5
 	maxLifecircle = time.Minute * 3
-	dialTimeout   = time.Millisecond * 100
-	ioTimeout     = time.Second * 5
+	dialTimeout   = time.Millisecond * 200
 )
 
 const (
 	defaultIdleWaitTimeout = time.Second * 3
-	defaultMaxIdle         = 500
-	defaultMaxActive       = 1000
+	defaultMaxIdle         = 60000
+	defaultMaxActive       = 60000
 )
 
 type GetOption struct {
-	Host     string        // ip address
-	Port     string        // target port
-	Protocol string        // tcp, udp
-	Timeout  time.Duration // io timeout
+	Host     string // ip address
+	Port     string // target port
+	Protocol string // tcp, udp
 }
 
 type connKey struct {
@@ -122,11 +120,6 @@ func (p *Pool) getDialFunc(opt GetOption) func() (net.Conn, error) {
 		if err != nil {
 			return nil, err
 		}
-		if opt.Timeout != 0 {
-			conn.SetDeadline(time.Now().Add(opt.Timeout))
-		} else {
-			conn.SetDeadline(time.Now().Add(ioTimeout))
-		}
 		return conn, nil
 	}
 }
@@ -144,6 +137,7 @@ type poolConn struct {
 }
 
 func (pc *poolConn) Close() error {
+	pc.SetDeadline(time.Time{})
 	pc.manager.put(pc)
 	return nil
 }
@@ -230,8 +224,6 @@ func (mgr *connManager) put(pc *poolConn) error {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	pc.idledAt = time.Now()
-	// use default io timeout when put to pool
-	pc.SetDeadline(time.Now().Add(ioTimeout))
 	mgr.conns.PushBack(pc)
 	mgr.idle.Add(1)
 	return nil

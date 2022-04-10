@@ -97,6 +97,5 @@ func MockServerOption() (GetOption, func()) {
 		Host:     url.Hostname(),
 		Port:     url.Port(),
 		Protocol: "tcp",
-		Timeout:  time.Second * 3,
 	}, func() { s.Close() }
 }
