@@ -60,7 +60,7 @@ func TestPoolGetForMaxActive(t *testing.T) {
 	conn, err := pool.Get(opt)
 	assert.Nil(t, err)
 	go func() {
-		time.Sleep(idleWaitTimeout * 2)
+		time.Sleep(time.Millisecond * 100 * 2)
 		_ = conn.Close()
 	}()
 	conn, err = pool.Get(opt)
