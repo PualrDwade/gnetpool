@@ -1,6 +1,9 @@
 package gnetpool
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -10,12 +13,8 @@ import (
 func TestPoolGet(t *testing.T) {
 	pool := NewPool()
 	defer pool.Close()
-	opt := GetOption{
-		Host:     "localhost",
-		Port:     "3306",
-		Protocol: "tcp",
-		Timeout:  time.Second,
-	}
+	opt, cancel := MockServerOption()
+	defer cancel()
 	conn, err := pool.Get(opt)
 	assert.Nil(t, err)
 	addr := conn.LocalAddr().String() + conn.RemoteAddr().String()
@@ -35,12 +34,8 @@ func TestPoolGet(t *testing.T) {
 
 func BenchmarkPoolGet(b *testing.B) {
 	pool := NewPool()
-	opt := GetOption{
-		Host:     "localhost",
-		Port:     "3306",
-		Protocol: "tcp",
-		Timeout:  time.Second,
-	}
+	opt, cancel := MockServerOption()
+	defer cancel()
 	for i := 0; i < b.N; i++ {
 		conn, err := pool.Get(opt)
 		assert.Nil(b, err)
@@ -51,12 +46,8 @@ func BenchmarkPoolGet(b *testing.B) {
 func TestPoolGetForMaxActive(t *testing.T) {
 	pool := NewPool(WithMaxActive(1), WithIdleWaitTimeout(time.Millisecond*100))
 	defer pool.Close()
-	opt := GetOption{
-		Host:     "localhost",
-		Port:     "3306",
-		Protocol: "tcp",
-		Timeout:  time.Second,
-	}
+	opt, cancel := MockServerOption()
+	defer cancel()
 	conn, err := pool.Get(opt)
 	assert.Nil(t, err)
 	go func() {
@@ -72,12 +63,9 @@ func TestPoolGetForMaxActive(t *testing.T) {
 func TestPoolGetForMaxIdle(t *testing.T) {
 	pool := NewPool(WithMaxIdle(1))
 	defer pool.Close()
-	opt := GetOption{
-		Host:     "localhost",
-		Port:     "3306",
-		Protocol: "tcp",
-		Timeout:  time.Second,
-	}
+	opt, cancel := MockServerOption()
+	defer cancel()
+
 	conn1, err1 := pool.Get(opt)
 	assert.Nil(t, err1)
 
@@ -97,4 +85,18 @@ func TestPoolGetForMaxIdle(t *testing.T) {
 	assert.Nil(t, newErr2, newErr2)
 
 	assert.NotEqual(t, newConn1.LocalAddr().String(), newConn2.LocalAddr().String())
+}
+
+func MockServerOption() (GetOption, func()) {
+	s := httptest.NewServer(http.DefaultServeMux)
+	url, err := url.Parse(s.URL)
+	if err != nil {
+		panic(err)
+	}
+	return GetOption{
+		Host:     url.Hostname(),
+		Port:     url.Port(),
+		Protocol: "tcp",
+		Timeout:  time.Second * 3,
+	}, func() { s.Close() }
 }
